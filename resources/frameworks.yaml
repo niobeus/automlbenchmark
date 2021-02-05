@@ -182,6 +182,12 @@ DecisionTree:
     A simple decision tree implementation (scikit-learn) used for testing or as a reference base.
   project: https://scikit-learn.org/stable/modules/generated/sklearn.tree.DecisionTreeClassifier.html
 
+SNNClassifier:
+  version: 'stable'
+  description: |
+    A simple self-normilizing network implementation.
+  project: none
+
 RandomForest:
   version: 'stable'
   description: |
