@@ -12,7 +12,7 @@ from frameworks.shared.callee import call_run, result, save_metadata, utils
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 from sklearn.utils.multiclass import unique_labels
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, log_loss
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -43,7 +43,7 @@ class Sampler:
       yield self.dataset[idxs[i: i + batch_size]]
 
 def layer(input, output):
-  return nn.Sequential(nn.Linear(input, output), nn.SELU(), nn.AlphaDropout(p=0.1))
+  return nn.Sequential(nn.Linear(input, output), nn.SELU(), nn.AlphaDropout(p=0.25))
 
 class MLP(nn.Module):
   def __init__(self, n_input, n_hidden, n_output):
@@ -89,7 +89,7 @@ class NNClassifier:
         
         loss.backward()
         self.optimizer.step()
-      # print('Epoch {}: train loss: {:.5f}'.format(i, loss.item()))
+      print('Epoch {}: train loss: {:.5f}'.format(i, loss.item()))
       # print(y_pred, torch.max(y,1)[0])
     # print(torch.max(y.long(),1)[0], y.long())
       
@@ -147,10 +147,13 @@ def run(dataset, config):
     estimator = NNClassifier if is_classification else None
     (_, y_train_counts) = np.unique(y_train, return_counts=True)
     n_input = len(X_train[0])
-    n_hidden = len(X_train[0])
-    n_hidden = [n_input, n_input, n_input // 2]
     n_output = len(y_train_counts)
+    n_hidden = [n_input * 20, n_input * 20, n_input * 20, 
+                n_input * 20, n_input * 20, n_input * 20, 
+                n_input * 20, n_input * 20, n_input * 20]
 
+    print(n_input, len(X_train))
+    
     if n_output > 2:
       loss = nn.CrossEntropyLoss()
     else:
@@ -162,8 +165,8 @@ def run(dataset, config):
               n_hidden=n_hidden, 
               n_output=n_output)
 
-    batch_size = 10
-    epochs = 30
+    batch_size = 5
+    epochs = 500
     
     net = estimator(mlp, 
                   batch_size=batch_size, 
@@ -192,23 +195,21 @@ def run(dataset, config):
     xx_test = torch.Tensor(X_test).to('cuda:0')
     probabilities = net.predict_proba(xx_test).detach().to('cpu') if is_classification else None
     probabilities = probabilities.tolist()
-        
-    # print('TEST ACCURACY', count/len(y_test))
+
+    res = []
+    [res.extend(l) for l in y_test]
+    res = list(map(int, res))
+    # print(res, predictions)    
     if n_output==1:
       auc = roc_auc_score(y_test, predictions)
       print('TEST AUC ', auc)
+      print('TEST LOGLOSS ', log_loss(res, predictions))
     else:
-      res = []
-      [res.extend(l) for l in y_test]
-      res = list(map(int, res))
-      # print(res)
-      # print(predictions)
       auc_ovo = roc_auc_score(res, probabilities, multi_class='ovo')
       auc_ovr = roc_auc_score(res, probabilities, multi_class='ovr')
       print('TEST AUC OVO {} OVR {}'.format(auc_ovo, auc_ovr))
-    
-    print('TEST LOSS (CrossEntropy) ', net.score(X_test, y_test))
-    print('TEST ACCURACY ', net.score(X_test, y_test))
+      print('TEST LOGLOSS ', log_loss(res, probabilities))
+
     print('TRAIN AND TEST FINISHED')
 
     return result(output_file=config.output_predictions_file,
